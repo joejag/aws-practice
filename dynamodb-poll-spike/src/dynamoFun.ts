@@ -4,7 +4,7 @@ import * as uuidv4 from "uuid/v4";
 AWS.config.update({ region: "eu-west-2" });
 const TABLE_NAME =
   process.env.TABLE_NAME || "DynamoStack-Votes58095409-1G0VD3PB0GPL";
-const POLL_ID = "e6b46aff-d039-476b-b4ab-364c66dc6579";
+const POLL_ID = "7f61b587-ebbc-408a-baba-43d9dc57b3bf";
 
 const db = new AWS.DynamoDB.DocumentClient();
 
@@ -19,7 +19,7 @@ var param = {
     LIMIT: 1,
     IS_ANON: false,
     IS_OPEN: true,
-    CREATED_AT: "date",
+    CREATED_AT: new Date().toISOString(),
     CREATED_BY: "joewright",
     VOTES: {},
   },
@@ -30,13 +30,7 @@ var param = {
 //   }
 // });
 
-// db.scan({
-//   TableName: TABLE_NAME,
-// })
-//   .promise()
-//   .then((d) => console.log(d.Items[0]));
-
-// add vote
+// MANY VOTE: add vote
 db.update({
   TableName: TABLE_NAME,
   Key: { ID: POLL_ID },
@@ -52,7 +46,7 @@ db.update({
   .promise()
   .catch(console.log);
 
-// add vote
+// MANY VOTE: add vote
 db.update({
   TableName: TABLE_NAME,
   Key: { ID: POLL_ID },
@@ -68,7 +62,7 @@ db.update({
   .promise()
   .catch(console.log);
 
-// remove vote
+// MANY VOTE: remove vote
 db.update({
   TableName: TABLE_NAME,
   Key: { ID: POLL_ID },
@@ -84,6 +78,7 @@ db.update({
   .promise()
   .catch(console.log);
 
+// Close a poll down
 db.update({
   TableName: TABLE_NAME,
   Key: { ID: POLL_ID },
@@ -111,3 +106,12 @@ db.update({
 })
   .promise()
   .catch(console.log);
+
+const util = require("util");
+
+// READ VOTES
+db.scan({
+  TableName: TABLE_NAME,
+})
+  .promise()
+  .then((d) => console.log(util.inspect(d.Items[0], false, null, true)));
