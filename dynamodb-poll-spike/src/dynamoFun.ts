@@ -1,117 +1,154 @@
 import * as AWS from "aws-sdk";
 import * as uuidv4 from "uuid/v4";
+import * as util from "util";
 
 AWS.config.update({ region: "eu-west-2" });
 const TABLE_NAME =
-  process.env.TABLE_NAME || "DynamoStack-Votes58095409-1G0VD3PB0GPL";
-const POLL_ID = "7f61b587-ebbc-408a-baba-43d9dc57b3bf";
+  process.env.TABLE_NAME || "DynamoStack-Votes58095409-M9SW1M06IH2V";
 
 const db = new AWS.DynamoDB.DocumentClient();
 
-// create poll
-var param = {
-  TableName: TABLE_NAME,
-  Item: {
-    ID: uuidv4(),
-    TITLE: "Who should be primeminster?",
-    OPTIONS: ["Boris", "Nicola", "Bob"],
-    VOTE_TYPE: "LIMIT",
-    LIMIT: 1,
-    IS_ANON: false,
-    IS_OPEN: true,
-    CREATED_AT: new Date().toISOString(),
-    CREATED_BY: "joewright",
-    VOTES: {},
-  },
+const createPoll = (
+  title: string,
+  options: string[],
+  voteType: string,
+  limit: number,
+  createdBy: string,
+  anon: boolean
+) => {
+  const id = uuidv4();
+  var param = {
+    TableName: TABLE_NAME,
+    Item: {
+      ID: id,
+      TITLE: title,
+      OPTIONS: options,
+      VOTE_TYPE: voteType,
+      LIMIT: limit,
+      IS_ANON: anon,
+      CREATED_BY: createdBy,
+      IS_OPEN: true,
+      CREATED_AT: new Date().toISOString(),
+      VOTES: {},
+    },
+  };
+  return db
+    .put(param)
+    .promise()
+    .then(() => id);
 };
-// db.put(param, (err) => {
-//   if (err) {
-//     console.log("Error", err);
-//   }
-// });
 
-// MANY VOTE: add vote
-db.update({
-  TableName: TABLE_NAME,
-  Key: { ID: POLL_ID },
-  ReturnValues: "ALL_NEW",
-  UpdateExpression: "ADD VOTES.#poller :OPTION",
-  ExpressionAttributeNames: {
-    "#poller": "george",
-  },
-  ExpressionAttributeValues: {
-    ":OPTION": db.createSet(["Boris"]),
-  },
-})
-  .promise()
-  .catch(console.log);
+const closePollDown = (pollId: string) => {
+  return db
+    .update({
+      TableName: TABLE_NAME,
+      Key: { ID: pollId },
+      ReturnValues: "ALL_NEW",
+      UpdateExpression: "SET IS_OPEN = :MODE",
+      ExpressionAttributeValues: {
+        ":MODE": false,
+      },
+    })
+    .promise()
+    .catch((err) => {
+      if (err.name !== "ConditionalCheckFailedException") console.log(err);
+    });
+};
 
-// MANY VOTE: add vote
-db.update({
-  TableName: TABLE_NAME,
-  Key: { ID: POLL_ID },
-  ReturnValues: "ALL_NEW",
-  UpdateExpression: "ADD VOTES.#poller :OPTION",
-  ExpressionAttributeNames: {
-    "#poller": "george",
-  },
-  ExpressionAttributeValues: {
-    ":OPTION": db.createSet(["Nicola"]),
-  },
-})
-  .promise()
-  .catch(console.log);
+const addVotesForMany = (pollId: string, poller: string, option: string) => {
+  return db
+    .update({
+      TableName: TABLE_NAME,
+      Key: { ID: pollId },
+      ReturnValues: "ALL_NEW",
+      UpdateExpression: "ADD VOTES.#poller :OPTION",
+      ConditionExpression: "IS_OPEN = :DESIRED_OPEN",
+      ExpressionAttributeNames: {
+        "#poller": poller,
+      },
+      ExpressionAttributeValues: {
+        ":OPTION": db.createSet([option]),
+        ":DESIRED_OPEN": true,
+      },
+    })
+    .promise()
+    .catch((err) => {
+      if (err.name !== "ConditionalCheckFailedException") console.log(err);
+    });
+};
 
-// MANY VOTE: remove vote
-db.update({
-  TableName: TABLE_NAME,
-  Key: { ID: POLL_ID },
-  ReturnValues: "ALL_NEW",
-  UpdateExpression: "DELETE VOTES.#poller :OPTION",
-  ExpressionAttributeNames: {
-    "#poller": "george",
-  },
-  ExpressionAttributeValues: {
-    ":OPTION": db.createSet(["Boris"]),
-  },
-})
-  .promise()
-  .catch(console.log);
+const addVotesForSingle = (pollId: string, poller: string, option: string) => {
+  return db
+    .update({
+      TableName: TABLE_NAME,
+      Key: { ID: pollId },
+      ReturnValues: "ALL_NEW",
+      UpdateExpression: "SET VOTES.#poller = :OPTION",
+      ConditionExpression: "IS_OPEN = :DESIRED_OPEN",
+      ExpressionAttributeNames: {
+        "#poller": poller,
+      },
+      ExpressionAttributeValues: {
+        ":OPTION": db.createSet([option]),
+        ":DESIRED_OPEN": true,
+      },
+    })
+    .promise()
+    .catch((err) => {
+      if (err.name !== "ConditionalCheckFailedException") console.log(err);
+    });
+};
 
-// Close a poll down
-db.update({
-  TableName: TABLE_NAME,
-  Key: { ID: POLL_ID },
-  ReturnValues: "ALL_NEW",
-  UpdateExpression: "SET IS_OPEN = :MODE",
-  ExpressionAttributeValues: {
-    ":MODE": false,
-  },
-})
-  .promise()
-  .catch(console.log);
+const removeVote = (pollId: string, poller: string, option: string) => {
+  return db
+    .update({
+      TableName: TABLE_NAME,
+      Key: { ID: pollId },
+      ReturnValues: "ALL_NEW",
+      UpdateExpression: "DELETE VOTES.#poller :OPTION",
+      ConditionExpression: "IS_OPEN = :DESIRED_OPEN",
+      ExpressionAttributeNames: {
+        "#poller": poller,
+      },
+      ExpressionAttributeValues: {
+        ":OPTION": db.createSet([option]),
+        ":DESIRED_OPEN": true,
+      },
+    })
+    .promise()
+    .catch((err) => {
+      if (err.name !== "ConditionalCheckFailedException") console.log(err);
+    });
+};
 
-// 1 VOTE ALLOWED - clear existing votes
-db.update({
-  TableName: TABLE_NAME,
-  Key: { ID: POLL_ID },
-  ReturnValues: "ALL_NEW",
-  UpdateExpression: "SET VOTES.#poller = :OPTION",
-  ExpressionAttributeNames: {
-    "#poller": "george",
-  },
-  ExpressionAttributeValues: {
-    ":OPTION": db.createSet(["Tom"]),
-  },
-})
-  .promise()
-  .catch(console.log);
+const printVotes = (id2: string) => {
+  db.get({
+    TableName: TABLE_NAME,
+    Key: {
+      ID: id2,
+    },
+  })
+    .promise()
+    .then((d) => console.log(util.inspect(d, false, null, true)));
+};
 
-const util = require("util");
-
-// READ VOTES
-db.scan({
-  TableName: TABLE_NAME,
-})
-  .promise()
-  .then((d) => console.log(util.inspect(d.Items[0], false, null, true)));
+createPoll(
+  "Lockdown going well?",
+  ["Yup", "Nope", "Save Me"],
+  "LIMIT",
+  1,
+  "Boris",
+  true
+).then((id) => {
+  Promise.resolve()
+    .then(() => addVotesForMany(id, "v1", "Yup"))
+    .then(() => addVotesForMany(id, "v1", "Yup"))
+    .then(() => addVotesForMany(id, "v1", "Nope"))
+    .then(() => addVotesForSingle(id, "v2", "Save Me"))
+    .then(() => removeVote(id, "v1", "Nope"))
+    .then(() => closePollDown(id))
+    .then(() => removeVote(id, "v1", "Yup"))
+    .then(() => addVotesForMany(id, "v1", "Yup"))
+    .then(() => addVotesForSingle(id, "v1", "Yup"))
+    .then(() => printVotes(id));
+});
