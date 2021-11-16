@@ -24,7 +24,7 @@
     "@aws-cdk/aws-dynamodb": "1.37.0",
     "@aws-cdk/core": "1.37.0",
     "@types/uuid": "^7.0.3",
-    "aws-sdk": "^2.673.0",
+    "aws-sdk": "^2.814.0",
     "source-map-support": "^0.5.16"
   }
 }
